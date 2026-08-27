@@ -1,0 +1,43 @@
+# Environment files - NEVER commit
+.env
+*.env
+.env.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.Python
+venv/
+env/
+.venv/
+
+# Audio temp
+audio_temp/
+audio_temp_test/
+*.ogg
+*.mp3
+*.wav
+*.m4a
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Logs
+*.log
+
+# ngrok
+ngrok.exe
+ngrok.yml
+
+# Test cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# SQLite database
+shifa_ai.db
+*.db

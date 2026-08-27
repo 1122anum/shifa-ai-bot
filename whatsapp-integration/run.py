@@ -10,11 +10,15 @@ Production:
 
 from app.webhook import app
 from app.config import config
+from app.database.db import init_db
 from app.utils.logger import get_logger
 
 logger = get_logger("run")
 
 if __name__ == "__main__":
+    # Initialise database on startup
+    init_db()
+
     logger.info("=" * 50)
     logger.info("  Shifa AI — WhatsApp Integration Server")
     logger.info("=" * 50)

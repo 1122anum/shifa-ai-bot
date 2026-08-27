@@ -76,12 +76,45 @@ def send_whatsapp_message(to: str, body: str) -> bool:
         return False
 
 
+def _is_emergency(ai_response: str) -> bool:
+    """
+    Detect if the AI classified urgency as EMERGENCY.
+
+    Only matches when EMERGENCY is the actual urgency classification,
+    NOT when it appears in educational context like "when to seek emergency care".
+
+    Looks for patterns like:
+      - "Urgency Level: EMERGENCY"
+      - "Urgency: EMERGENCY"
+      - "URGENCY LEVEL: EMERGENCY"
+      - "*EMERGENCY*" at start of response
+      - "Triage Level: EMERGENCY"
+    """
+    import re
+    text = ai_response
+
+    # Pattern 1: Urgency label followed by EMERGENCY
+    urgency_pattern = re.search(
+        r'(?:urgency|triage|priority|level)\s*(?:level)?\s*[:\-–]\s*\*{0,2}EMERGENCY\*{0,2}',
+        text,
+        re.IGNORECASE,
+    )
+    if urgency_pattern:
+        return True
+
+    # Pattern 2: Response starts with EMERGENCY (first 30 chars)
+    if re.match(r'^\s*\*{0,2}EMERGENCY\*{0,2}', text.strip(), re.IGNORECASE):
+        return True
+
+    return False
+
+
 def format_triage_response(ai_response: str) -> str:
     """
     Format AI triage response for WhatsApp delivery.
-    Adds emergency header if EMERGENCY is detected.
+    Adds emergency header only if EMERGENCY is the actual urgency level.
     """
-    if "EMERGENCY" in ai_response.upper():
+    if _is_emergency(ai_response):
         return (
             "⚠️ *EMERGENCY*\n\n"
             "Your symptoms may require *immediate medical attention*.\n\n"

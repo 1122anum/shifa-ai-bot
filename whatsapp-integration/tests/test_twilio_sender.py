@@ -1,72 +1,51 @@
 """
-test_twilio_sender.py — Unit tests for the Twilio message sender and formatters.
+test_twilio_sender.py — Tests for format_triage_response (meta_sender).
+
+Note: twilio_sender.py is dead code (Twilio replaced by Meta API).
+These tests now cover the Meta sender formatter only.
 """
 
-from unittest.mock import patch, MagicMock
-import pytest
-from app.services.twilio_sender import format_triage_response
+from app.services.meta_sender import format_triage_response, _is_emergency
+
+
+class TestIsEmergency:
+    def test_urgency_label_emergency(self):
+        assert _is_emergency("Urgency Level: EMERGENCY\nCall 1122.") is True
+
+    def test_triage_label_emergency(self):
+        assert _is_emergency("Triage Level: EMERGENCY\nSeek help.") is True
+
+    def test_routine_is_not_emergency(self):
+        assert _is_emergency("Triage Level: ROUTINE\nRest.") is False
+
+    def test_urgent_is_not_emergency(self):
+        assert _is_emergency("Urgency Level: URGENT\nSee doctor.") is False
+
+    def test_educational_emergency_not_triggered(self):
+        """EMERGENCY mentioned in educational context must NOT trigger header."""
+        text = (
+            "*Urgency Level: ROUTINE*\n"
+            "### When to seek EMERGENCY care:\n"
+            "- Sudden severe headache"
+        )
+        assert _is_emergency(text) is False
+
+    def test_case_insensitive(self):
+        assert _is_emergency("urgency level: emergency\nseek help.") is True
 
 
 class TestFormatTriageResponse:
+    def test_emergency_adds_header(self):
+        resp = format_triage_response("Urgency Level: EMERGENCY\nCall now.")
+        assert "⚠️" in resp
+        assert "*EMERGENCY*" in resp
+        assert "immediately" in resp.lower()
 
-    def test_emergency_adds_warning_header(self):
-        """EMERGENCY in response → ⚠️ header and seek care message."""
-        ai_response = "Triage Level: EMERGENCY\nCall 1122 immediately."
-        result = format_triage_response(ai_response)
+    def test_routine_unchanged(self):
+        resp = format_triage_response("Triage Level: ROUTINE\nDrink water.")
+        assert resp == "Triage Level: ROUTINE\nDrink water."
 
-        assert "⚠️" in result
-        assert "*EMERGENCY*" in result
-        assert "immediately" in result.lower() or "emergency" in result.lower()
-        assert ai_response in result  # Original content preserved
-
-    def test_routine_response_unchanged(self):
-        """Non-emergency response is returned as-is."""
-        ai_response = "Triage Level: ROUTINE\nDrink water and rest."
-        result = format_triage_response(ai_response)
-        assert result == ai_response
-
-    def test_urgent_response_unchanged(self):
-        """URGENT response (not EMERGENCY) is returned as-is."""
-        ai_response = "Triage Level: URGENT\nSee a doctor today."
-        result = format_triage_response(ai_response)
-        assert result == ai_response
-
-    def test_emergency_case_insensitive(self):
-        """Emergency detection is case-insensitive."""
-        ai_response = "triage level: emergency\nseek help."
-        result = format_triage_response(ai_response)
-        assert "⚠️" in result
-
-
-class TestSendWhatsAppMessage:
-
-    @patch("app.services.twilio_sender._get_client")
-    def test_send_adds_whatsapp_prefix(self, mock_get_client):
-        """If 'whatsapp:' prefix is missing, it should be added automatically."""
-        mock_client = MagicMock()
-        mock_message = MagicMock()
-        mock_message.sid = "SMtest123"
-        mock_client.messages.create.return_value = mock_message
-        mock_get_client.return_value = mock_client
-
-        from app.services.twilio_sender import send_whatsapp_message
-        send_whatsapp_message("+923001234567", "Test message")
-
-        call_kwargs = mock_client.messages.create.call_args[1]
-        assert call_kwargs["to"] == "whatsapp:+923001234567"
-
-    @patch("app.services.twilio_sender._get_client")
-    def test_send_does_not_double_prefix(self, mock_get_client):
-        """If 'whatsapp:' prefix already exists, it should not be doubled."""
-        mock_client = MagicMock()
-        mock_message = MagicMock()
-        mock_message.sid = "SMtest456"
-        mock_client.messages.create.return_value = mock_message
-        mock_get_client.return_value = mock_client
-
-        from app.services.twilio_sender import send_whatsapp_message
-        send_whatsapp_message("whatsapp:+923001234567", "Test message")
-
-        call_kwargs = mock_client.messages.create.call_args[1]
-        assert call_kwargs["to"] == "whatsapp:+923001234567"
-        assert "whatsapp:whatsapp:" not in call_kwargs["to"]
+    def test_emergency_preserves_original(self):
+        ai = "Urgency Level: EMERGENCY\nGo to ER."
+        resp = format_triage_response(ai)
+        assert ai in resp
