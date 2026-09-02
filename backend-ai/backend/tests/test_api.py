@@ -229,3 +229,59 @@ def test_whisper_failure_returns_502(client, monkeypatch):
     body = response.json()
     assert body["status"] == "error"
     assert "temporarily unavailable" in body["detail"]
+
+
+def test_voice_triage_with_vital_context(client, monkeypatch):
+    """Voice triage should accept and forward vital_context form field."""
+    captured = {}
+
+    def fake_transcribe(path):
+        return "Mujhe chakkar aa rahe hain"
+
+    def fake_triage(symptoms):
+        captured["symptoms"] = symptoms
+        return FAKE_TRIAGE_REPLY
+
+    monkeypatch.setattr(whisper_service, "transcribe_audio", fake_transcribe)
+    monkeypatch.setattr(triage_service, "get_triage", fake_triage)
+
+    vital_ctx = "[Experimental Camera Vitals — signal_quality: GOOD]\nHeart Rate: 82 BPM"
+
+    response = client.post(
+        "/api/voice-triage",
+        data={
+            "user_id": "wa-42",
+            "vital_context": vital_ctx,
+        },
+        files={"file": ("voice.ogg", io.BytesIO(b"fake-audio"), "audio/ogg")},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "success"
+    # vital context should be prepended to the transcript
+    assert "Experimental Camera Vitals" in captured["symptoms"]
+    assert "chakkar" in captured["symptoms"]
+
+
+def test_voice_triage_without_vital_context(client, monkeypatch):
+    """Voice triage should work normally without vital_context."""
+    captured = {}
+
+    def fake_transcribe(path):
+        return "Mujhe bukhar hai"
+
+    def fake_triage(symptoms):
+        captured["symptoms"] = symptoms
+        return FAKE_TRIAGE_REPLY
+
+    monkeypatch.setattr(whisper_service, "transcribe_audio", fake_transcribe)
+    monkeypatch.setattr(triage_service, "get_triage", fake_triage)
+
+    response = client.post(
+        "/api/voice-triage",
+        data={"user_id": "wa-42"},
+        files={"file": ("voice.ogg", io.BytesIO(b"fake-audio"), "audio/ogg")},
+    )
+    assert response.status_code == 200
+    # No vital context — symptoms should just be the transcript
+    assert captured["symptoms"] == "Mujhe bukhar hai"

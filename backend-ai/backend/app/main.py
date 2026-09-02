@@ -3,9 +3,11 @@ import os
 import tempfile
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect, Query
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.models.schemas import (
     SymptomRequest,
@@ -16,6 +18,9 @@ from app.models.schemas import (
 from app.services import triage_service, whisper_service
 from app.services.gemini_service import GeminiServiceError
 from app.services.whisper_service import SUPPORTED_AUDIO_EXTENSIONS, WhisperServiceError
+from app.services.websocket_manager import ws_manager, verify_dashboard_token
+from app.api.vitals import router as vitals_router
+from app.api.emergency import router as emergency_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -31,6 +36,58 @@ app = FastAPI(
     ),
     version="1.0.0",
 )
+
+# CORS — required so the browser camera page (opened via WhatsApp link)
+# can POST to /api/vitals/estimate on this backend.
+# Session tokens provide authorisation; cookies are not used.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Register routers
+app.include_router(vitals_router)
+app.include_router(emergency_router, prefix="/api/emergency")
+
+# Serve camera web page static files
+_static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
+if os.path.exists(_static_dir):
+    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
+
+@app.get("/vitals/camera")
+def camera_page(s: str = ""):
+    """Serve the mobile camera page for vital sign measurement."""
+    page = os.path.join(os.path.dirname(__file__), "..", "static", "vitals", "camera.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="Camera page not found.")
+    return FileResponse(page, media_type="text/html")
+
+
+@app.get("/dashboard/emergencies")
+def dashboard_page(token: str = ""):
+    """Serve the real-time emergency dashboard page."""
+    page = os.path.join(os.path.dirname(__file__), "..", "static", "dashboard", "index.html")
+    if not os.path.exists(page):
+        raise HTTPException(status_code=404, detail="Dashboard page not found.")
+    return FileResponse(page, media_type="text/html")
+
+
+@app.websocket("/ws/emergencies")
+async def websocket_emergencies(websocket: WebSocket, token: str = ""):
+    """WebSocket endpoint for real-time emergency dashboard updates."""
+    if not verify_dashboard_token(token):
+        await websocket.close(code=4003)
+        return
+    await ws_manager.connect(websocket)
+    try:
+        while True:
+            # Keep connection alive — dashboard is read-only via WS
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)
 
 
 @app.exception_handler(RequestValidationError)
@@ -76,6 +133,21 @@ def root():
             "text_triage": "POST /api/triage",
             "voice_transcription": "POST /api/transcribe",
             "voice_triage": "POST /api/voice-triage",
+            "vitals_session": "POST /api/vitals/session",
+            "vitals_estimate": "POST /api/vitals/estimate",
+            "vitals_result": "GET /api/vitals/result/{session_id}",
+            "camera_page": "GET /vitals/camera",
+            "emergency_analyze": "POST /api/emergency/analyze",
+            "emergency_active": "GET /api/emergency/active",
+            "emergency_detail": "GET /api/emergency/{emergency_id}",
+            "emergency_location": "POST /api/emergency/{emergency_id}/location",
+            "emergency_acknowledge": "POST /api/emergency/{emergency_id}/acknowledge",
+            "emergency_resolve": "POST /api/emergency/{emergency_id}/resolve",
+            "emergency_cancel": "POST /api/emergency/{emergency_id}/cancel",
+            "nearest_facility": "GET /api/emergency/facilities/nearest",
+            "dispatch_mock": "POST /api/emergency/dispatch/mock",
+            "dashboard": "GET /dashboard/emergencies",
+            "websocket": "WS /ws/emergencies",
             "docs": "/docs",
         },
     }
@@ -118,8 +190,17 @@ async def transcribe(file: UploadFile = File(...)):
 
 
 @app.post("/api/voice-triage", response_model=VoiceTriageResponse)
-async def voice_triage(user_id: str = Form(...), file: UploadFile = File(...)):
-    """Full voice pipeline: Audio -> Whisper -> Text -> Gemini -> Triage response."""
+async def voice_triage(
+    user_id: str = Form(...),
+    file: UploadFile = File(...),
+    vital_context: str = Form(default=""),
+):
+    """Full voice pipeline: Audio -> Whisper -> Text -> Gemini -> Triage response.
+
+    If ``vital_context`` is provided it is prepended to the transcript so that
+    Gemini receives recent experimental camera-vital estimates alongside the
+    user's spoken symptoms.
+    """
     if not user_id.strip():
         raise HTTPException(status_code=422, detail="user_id must not be empty.")
 
@@ -135,8 +216,13 @@ async def voice_triage(user_id: str = Form(...), file: UploadFile = File(...)):
                 detail="The speech-to-text service is temporarily unavailable. Please try again later.",
             )
 
+        # Attach experimental vital context (if any) before sending to Gemini
+        symptoms_for_triage = transcript
+        if vital_context and vital_context.strip():
+            symptoms_for_triage = vital_context.strip() + "\n\n" + transcript
+
         try:
-            result = triage_service.get_triage(transcript)
+            result = triage_service.get_triage(symptoms_for_triage)
         except GeminiServiceError:
             raise HTTPException(
                 status_code=502,

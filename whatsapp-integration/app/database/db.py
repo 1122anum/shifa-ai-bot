@@ -60,9 +60,60 @@ CREATE TABLE IF NOT EXISTS triage_results (
     created_at       DATETIME DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_conv_user   ON conversations(user_id);
-CREATE INDEX IF NOT EXISTS idx_msg_conv    ON messages(conversation_id);
-CREATE INDEX IF NOT EXISTS idx_triage_conv ON triage_results(conversation_id);
+CREATE TABLE IF NOT EXISTS vital_measurements (
+    id                      INTEGER  PRIMARY KEY AUTOINCREMENT,
+    user_id                 TEXT     NOT NULL,
+    conversation_id         INTEGER  REFERENCES conversations(id),
+    measurement_session_id  TEXT     NOT NULL UNIQUE,
+    heart_rate              INTEGER,
+    heart_rate_confidence   REAL,
+    respiration_rate        INTEGER,
+    respiration_confidence  REAL,
+    signal_quality          TEXT,
+    quality_score           REAL,
+    measurement_duration    REAL,
+    algorithm_version       TEXT,
+    created_at              DATETIME DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_vitals_user ON vital_measurements(user_id);
+CREATE INDEX IF NOT EXISTS idx_vitals_conv ON vital_measurements(conversation_id);
+
+CREATE TABLE IF NOT EXISTS emergency_incidents (
+    id                     TEXT     PRIMARY KEY,
+    user_id                TEXT     NOT NULL,
+    conversation_id        INTEGER  REFERENCES conversations(id),
+    risk_level             TEXT     NOT NULL,
+    category               TEXT,
+    confidence             REAL,
+    red_flags              TEXT,
+    status                 TEXT     NOT NULL DEFAULT 'NORMAL',
+    latitude               REAL,
+    longitude              REAL,
+    location_accuracy      REAL,
+    location_timestamp     DATETIME,
+    nearest_facility_id   TEXT,
+    distance_km            REAL,
+    estimated_eta          REAL,
+    dispatch_id            TEXT,
+    dispatch_status        TEXT,
+    dashboard_alert_status TEXT,
+    vital_context          TEXT,
+    created_at             DATETIME DEFAULT (datetime('now')),
+    updated_at             DATETIME DEFAULT (datetime('now')),
+    resolved_at            DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS emergency_events (
+    id             INTEGER  PRIMARY KEY AUTOINCREMENT,
+    emergency_id   TEXT     NOT NULL REFERENCES emergency_incidents(id),
+    event_type     TEXT     NOT NULL,
+    event_data     TEXT,
+    created_at     DATETIME DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_emergency_user ON emergency_incidents(user_id);
+CREATE INDEX IF NOT EXISTS idx_emergency_status ON emergency_incidents(status);
 """
 
 

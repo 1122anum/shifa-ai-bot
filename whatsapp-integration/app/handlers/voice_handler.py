@@ -21,6 +21,13 @@ from app.services.meta_sender import (
     GENERIC_ERROR_MSG,
 )
 from app.database.context_manager import ConversationContext
+from app.handlers.vitals_handler import fetch_vital_context
+from app.handlers.emergency_handler import (
+    detect_emergency_from_triage,
+    handle_emergency_workflow,
+    is_cancellation_request,
+    handle_emergency_cancellation,
+)
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -48,8 +55,21 @@ def handle_voice_message(from_number: str, media_id: str, content_type: str) -> 
         logger.info("Audio downloaded | from=%s | path=%s", from_number, audio_path)
 
         # Step 2 — Single call: audio → Whisper → Gemini
+        # Attach recent vital measurement context if available (within 30 min)
+        vital_ctx = ""
         try:
-            result      = call_voice_triage(user_id=from_number, audio_path=audio_path)
+            vital_ctx = fetch_vital_context(from_number)
+            if vital_ctx:
+                logger.info("Vital context attached to voice triage | from=%s", from_number)
+        except Exception as exc:
+            logger.debug("Could not fetch vital context for voice: %s", exc)
+
+        try:
+            result      = call_voice_triage(
+                user_id=from_number,
+                audio_path=audio_path,
+                vital_context=vital_ctx,
+            )
             ai_response = result["ai_response"]
             transcript  = result["transcript"]
             logger.info(
@@ -81,6 +101,20 @@ def handle_voice_message(from_number: str, media_id: str, content_type: str) -> 
         # Step 4 — Format and send
         reply = format_triage_response(ai_response)
         send_whatsapp_message(from_number, reply)
+
+        # Step 5 — Emergency detection post-check
+        try:
+            emergency = detect_emergency_from_triage(ai_response)
+            if emergency and emergency.get("risk_level") == "CRITICAL_EMERGENCY":
+                logger.info("Emergency detected from voice triage | from=%s", from_number)
+                import threading
+                threading.Thread(
+                    target=handle_emergency_workflow,
+                    args=(from_number, ai_response, transcript, ""),
+                    daemon=True,
+                ).start()
+        except Exception as exc:
+            logger.error("Voice emergency post-check failed: %s", exc)
 
     except Exception:
         logger.exception("Unexpected error in voice handler | from=%s", from_number)

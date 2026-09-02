@@ -154,6 +154,10 @@ def validate_input(text: str) -> InputValidationResult:
     if MEDICAL_KEYWORDS.search(stripped):
         return InputValidationResult("triage", cleaned_text=stripped)
 
+    # 7b. Pulse/vitals trigger keywords — pass through as triage
+    if re.search(r"(pulse|vital|nabd|heart\s*rate|دھڑکن|نبض)", stripped, re.IGNORECASE):
+        return InputValidationResult("triage", cleaned_text=stripped)
+
     # 8. Very short non-medical text (< 5 chars, no medical context)
     if len(stripped) < 5:
         return InputValidationResult("reply", EMPTY_RESPONSE)

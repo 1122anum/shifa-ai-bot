@@ -93,17 +93,18 @@ def _is_emergency(ai_response: str) -> bool:
     import re
     text = ai_response
 
-    # Pattern 1: Urgency label followed by EMERGENCY
+    # Pattern 1: Urgency label followed by EMERGENCY or CRITICAL_EMERGENCY
     urgency_pattern = re.search(
-        r'(?:urgency|triage|priority|level)\s*(?:level)?\s*[:\-–]\s*\*{0,2}EMERGENCY\*{0,2}',
+        r'(?:urgency|triage|priority|level)\s*(?:level)?\s*[:\-–]\s*\*{0,2}'
+        r'(?:CRITICAL[_\s]EMERGENCY|EMERGENCY)\*{0,2}',
         text,
         re.IGNORECASE,
     )
     if urgency_pattern:
         return True
 
-    # Pattern 2: Response starts with EMERGENCY (first 30 chars)
-    if re.match(r'^\s*\*{0,2}EMERGENCY\*{0,2}', text.strip(), re.IGNORECASE):
+    # Pattern 2: Response starts with EMERGENCY or CRITICAL_EMERGENCY (first 30 chars)
+    if re.match(r'^\s*\*{0,2}(?:CRITICAL[_\s]EMERGENCY|EMERGENCY)\*{0,2}', text.strip(), re.IGNORECASE):
         return True
 
     return False

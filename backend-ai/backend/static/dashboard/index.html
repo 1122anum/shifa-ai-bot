@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shifa AI — Emergency Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+.header{background:#1e293b;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #ef4444}
+.header h1{font-size:1.4rem;color:#f8fafc}
+.header h1 span{color:#ef4444}
+.status-bar{display:flex;align-items:center;gap:12px;font-size:0.85rem}
+.ws-status{display:flex;align-items:center;gap:6px}
+.ws-dot{width:10px;height:10px;border-radius:50%;background:#ef4444}
+.ws-dot.connected{background:#22c55e}
+.container{max-width:1200px;margin:0 auto;padding:20px}
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:24px}
+.stat-card{background:#1e293b;padding:16px;border-radius:8px;text-align:center}
+.stat-card .value{font-size:2rem;font-weight:700;color:#f8fafc}
+.stat-card .label{font-size:0.75rem;color:#94a3b8;text-transform:uppercase;margin-top:4px}
+.stat-card.critical .value{color:#ef4444}
+.stat-card.high .value{color:#f59e0b}
+.emergency-list{display:flex;flex-direction:column;gap:16px}
+.emergency-card{background:#1e293b;border-radius:12px;padding:20px;border-left:4px solid #64748b;transition:all 0.3s}
+.emergency-card.critical{border-left-color:#ef4444;background:#1e293b}
+.emergency-card.high{border-left-color:#f59e0b}
+.emergency-card.routine{border-left-color:#22c55e}
+.card-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.risk-badge{padding:4px 12px;border-radius:20px;font-size:0.75rem;font-weight:700;text-transform:uppercase}
+.risk-badge.critical{background:#991b1b;color:#fca5a5}
+.risk-badge.high{background:#92400e;color:#fcd34d}
+.risk-badge.routine{background:#166534;color:#86efac}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:12px}
+.card-field{display:flex;flex-direction:column}
+.card-field .label{font-size:0.7rem;color:#94a3b8;text-transform:uppercase;margin-bottom:2px}
+.card-field .value{font-size:0.9rem;color:#f1f5f9}
+.card-field .value.experimental{color:#fbbf24;font-style:italic}
+.card-field .value.simulated{color:#f97316}
+.red-flags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.red-flag{background:#450a0a;color:#fca5a5;padding:2px 8px;border-radius:4px;font-size:0.75rem}
+.card-actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;transition:background 0.2s}
+.btn-acknowledge{background:#2563eb;color:#fff}
+.btn-acknowledge:hover{background:#1d4ed8}
+.btn-resolve{background:#16a34a;color:#fff}
+.btn-resolve:hover{background:#15803d}
+.btn-cancel{background:#dc2626;color:#fff}
+.btn-cancel:hover{background:#b91c1c}
+.btn-dispatch{background:#f59e0b;color:#000}
+.btn-dispatch:hover{background:#d97706}
+.btn:disabled{opacity:0.5;cursor:not-allowed}
+.empty-state{text-align:center;padding:60px 20px;color:#64748b}
+.empty-state h2{font-size:1.5rem;margin-bottom:8px;color:#94a3b8}
+.toast{position:fixed;bottom:20px;right:20px;background:#1e293b;border:1px solid #334155;padding:12px 20px;border-radius:8px;font-size:0.85rem;opacity:0;transition:opacity 0.3s;z-index:100}
+.toast.show{opacity:1}
+.disclaimer{background:#451a03;border:1px solid #92400e;padding:12px;border-radius:8px;margin-bottom:20px;font-size:0.8rem;color:#fcd34d}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span>Shifa AI</span> — Emergency Dashboard</h1>
+  <div class="status-bar">
+    <div class="ws-status">
+      <div class="ws-dot" id="ws-dot"></div>
+      <span id="ws-label">Disconnected</span>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <div class="disclaimer">
+    DEMO / SIMULATION MODE — All dispatch data is simulated. This is NOT a real emergency response system.
+    Camera-derived vitals are EXPERIMENTAL and not clinically validated.
+  </div>
+
+  <div class="stats-row" id="stats-row">
+    <div class="stat-card critical"><div class="value" id="stat-critical">0</div><div class="label">Critical</div></div>
+    <div class="stat-card high"><div class="value" id="stat-high">0</div><div class="label">High Risk</div></div>
+    <div class="stat-card"><div class="value" id="stat-active">0</div><div class="label">Active</div></div>
+    <div class="stat-card"><div class="value" id="stat-dispatched">0</div><div class="label">Dispatched (Sim)</div></div>
+  </div>
+
+  <div class="emergency-list" id="emergency-list">
+    <div class="empty-state" id="empty-state">
+      <h2>No Active Emergencies</h2>
+      <p>The dashboard is monitoring for emergency events.</p>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API_BASE = window.location.origin;
+const TOKEN = new URLSearchParams(window.location.search).get('token') || 'shifa_dashboard_2024';
+let ws = null;
+let emergencies = {};
+
+// ── WebSocket ────────────────────────────────────
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = `${proto}//${location.host}/ws/emergencies?token=${TOKEN}`;
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    document.getElementById('ws-dot').classList.add('connected');
+    document.getElementById('ws-label').textContent = 'Connected';
+    showToast('WebSocket connected');
+  };
+
+  ws.onmessage = (evt) => {
+    try {
+      const data = JSON.parse(evt.data);
+      handleEvent(data);
+    } catch(e) { console.error('WS parse error', e); }
+  };
+
+  ws.onclose = () => {
+    document.getElementById('ws-dot').classList.remove('connected');
+    document.getElementById('ws-label').textContent = 'Disconnected';
+    setTimeout(connectWS, 3000);
+  };
+
+  ws.onerror = () => { ws.close(); };
+}
+
+function handleEvent(data) {
+  const evt = data.event;
+  showToast(`${evt}: ${data.emergency_id || ''}`);
+  // Reload emergencies on any event
+  loadEmergencies();
+}
+
+// ── Load emergencies ─────────────────────────────
+async function loadEmergencies() {
+  try {
+    const resp = await fetch(`${API_BASE}/api/emergency/active`);
+    const data = await resp.json();
+    emergencies = {};
+    (data.incidents || []).forEach(inc => {
+      emergencies[inc.id] = inc;
+    });
+    render();
+  } catch(e) { console.error('Load error', e); }
+}
+
+// ── Render ───────────────────────────────────────
+function render() {
+  const list = document.getElementById('emergency-list');
+  const items = Object.values(emergencies);
+  updateStats(items);
+
+  if (items.length === 0) {
+    list.innerHTML = '<div class="empty-state"><h2>No Active Emergencies</h2><p>The dashboard is monitoring for emergency events.</p></div>';
+    return;
+  }
+
+  // Sort: CRITICAL first, then HIGH_RISK, then others
+  items.sort((a, b) => {
+    const order = {CRITICAL_EMERGENCY: 0, HIGH_RISK: 1, ROUTINE: 2};
+    return (order[a.risk_level] || 3) - (order[b.risk_level] || 3);
+  });
+
+  list.innerHTML = items.map(inc => renderCard(inc)).join('');
+}
+
+function renderCard(inc) {
+  const riskClass = inc.risk_level === 'CRITICAL_EMERGENCY' ? 'critical' :
+                    inc.risk_level === 'HIGH_RISK' ? 'high' : 'routine';
+  const riskLabel = inc.risk_level.replace(/_/g, ' ');
+  const category = (inc.category || 'N/A').replace(/_/g, ' ');
+  const locationStatus = inc.latitude ? `${inc.latitude.toFixed(4)}, ${inc.longitude.toFixed(4)}` : 'Not received';
+  const distance = inc.distance_km ? `${inc.distance_km} km` : 'N/A';
+  const eta = inc.estimated_eta ? `${inc.estimated_eta} min (Estimated)` : 'N/A';
+  const dispatchStatus = inc.dispatch_status || 'None';
+  const isDispatched = inc.dispatch_id != null;
+  const isResolved = ['RESOLVED','CANCELLED','PATIENT_GUIDANCE_SENT','DISPATCH_CONFIRMED'].includes(inc.status);
+
+  // Vital context
+  let vitalHTML = '';
+  if (inc.vital_context) {
+    try {
+      const v = typeof inc.vital_context === 'string' ? JSON.parse(inc.vital_context) : inc.vital_context;
+      if (v.heart_rate) vitalHTML += `<div class="card-field"><span class="label">Heart Rate (Experimental)</span><span class="value experimental">${v.heart_rate} BPM</span></div>`;
+      if (v.respiration_rate) vitalHTML += `<div class="card-field"><span class="label">Respiration (Experimental)</span><span class="value experimental">${v.respiration_rate}/min</span></div>`;
+      if (v.signal_quality) vitalHTML += `<div class="card-field"><span class="label">Signal Quality</span><span class="value">${v.signal_quality}</span></div>`;
+    } catch(e) {}
+  }
+
+  const flags = (inc.red_flags || []).map(f => `<span class="red-flag">${f}</span>`).join('');
+
+  return `
+    <div class="emergency-card ${riskClass}">
+      <div class="card-header">
+        <div>
+          <span class="risk-badge ${riskClass}">${riskLabel}</span>
+          <span style="margin-left:8px;font-size:0.8rem;color:#94a3b8">${inc.id.slice(0,12)}...</span>
+        </div>
+        <span style="font-size:0.75rem;color:#64748b">${inc.created_at || ''}</span>
+      </div>
+      <div class="card-grid">
+        <div class="card-field"><span class="label">Category</span><span class="value">${category}</span></div>
+        <div class="card-field"><span class="label">Confidence</span><span class="value">${(inc.confidence * 100).toFixed(0)}%</span></div>
+        <div class="card-field"><span class="label">Status</span><span class="value">${inc.status}</span></div>
+        <div class="card-field"><span class="label">Location</span><span class="value">${locationStatus}</span></div>
+        <div class="card-field"><span class="label">Distance</span><span class="value">${distance}</span></div>
+        <div class="card-field"><span class="label">ETA</span><span class="value">${eta}</span></div>
+        ${vitalHTML}
+        <div class="card-field"><span class="label">Dispatch</span><span class="value ${isDispatched ? 'simulated' : ''}">${dispatchStatus}${isDispatched ? ' (SIMULATED)' : ''}</span></div>
+      </div>
+      ${flags ? `<div class="red-flags">${flags}</div>` : ''}
+      <div class="card-actions">
+        <button class="btn btn-acknowledge" onclick="doAction('${inc.id}','acknowledge')" ${isResolved?'disabled':''}>Acknowledge</button>
+        <button class="btn btn-dispatch" onclick="doDispatch('${inc.id}')" ${isDispatched||isResolved?'disabled':''}>Mock Dispatch</button>
+        <button class="btn btn-resolve" onclick="doAction('${inc.id}','resolve')" ${isResolved?'disabled':''}>Resolve</button>
+        <button class="btn btn-cancel" onclick="doAction('${inc.id}','cancel')" ${isResolved?'disabled':''}>Cancel</button>
+      </div>
+    </div>`;
+}
+
+function updateStats(items) {
+  document.getElementById('stat-critical').textContent = items.filter(i => i.risk_level === 'CRITICAL_EMERGENCY').length;
+  document.getElementById('stat-high').textContent = items.filter(i => i.risk_level === 'HIGH_RISK').length;
+  document.getElementById('stat-active').textContent = items.length;
+  document.getElementById('stat-dispatched').textContent = items.filter(i => i.dispatch_id).length;
+}
+
+// ── Actions ──────────────────────────────────────
+async function doAction(id, action) {
+  try {
+    await fetch(`${API_BASE}/api/emergency/${id}/${action}`, {method: 'POST'});
+    showToast(`${action} sent for ${id.slice(0,12)}`);
+    loadEmergencies();
+  } catch(e) { showToast(`Error: ${e.message}`); }
+}
+
+async function doDispatch(id) {
+  try {
+    await fetch(`${API_BASE}/api/emergency/dispatch/mock?emergency_id=${id}`, {method: 'POST'});
+    showToast(`Mock dispatch created for ${id.slice(0,12)}`);
+    loadEmergencies();
+  } catch(e) { showToast(`Error: ${e.message}`); }
+}
+
+// ── Toast ────────────────────────────────────────
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ── Init ─────────────────────────────────────────
+connectWS();
+loadEmergencies();
+setInterval(loadEmergencies, 10000);
+</script>
+</body>
+</html>

@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Shifa AI — Pulse Check</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0a0a0a;
+    color: #fff;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  #app { width: 100%; max-width: 420px; padding: 16px; }
+
+  /* ── Screens ── */
+  .screen { display: none; flex-direction: column; align-items: center; gap: 16px; }
+  .screen.active { display: flex; }
+
+  /* ── Camera view ── */
+  #camera-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 3/4;
+    border-radius: 20px;
+    overflow: hidden;
+    background: #111;
+  }
+  #video {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1); /* mirror */
+  }
+  #canvas { display: none; }
+  #overlay-canvas {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+
+  /* Face oval guide */
+  #face-guide {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 65%; aspect-ratio: 3/4;
+    border: 3px solid rgba(255,255,255,0.4);
+    border-radius: 50%;
+    pointer-events: none;
+    transition: border-color 0.4s;
+  }
+  #face-guide.good  { border-color: #22c55e; }
+  #face-guide.bad   { border-color: #ef4444; }
+
+  /* Progress ring */
+  #progress-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 75%; aspect-ratio: 3/4;
+    pointer-events: none;
+  }
+  #progress-ring circle {
+    fill: none;
+    stroke: #22c55e;
+    stroke-width: 3;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.5s linear;
+  }
+
+  /* Status badge */
+  #status-badge {
+    position: absolute;
+    bottom: 12px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.7);
+    border-radius: 20px;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    backdrop-filter: blur(4px);
+  }
+
+  /* Countdown */
+  #countdown {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 80px;
+    font-weight: 800;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.8);
+    display: none;
+  }
+
+  /* ── Buttons ── */
+  .btn {
+    width: 100%;
+    padding: 16px;
+    border: none;
+    border-radius: 14px;
+    font-size: 17px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary { background: #22c55e; color: #000; }
+  .btn-secondary { background: #1f2937; color: #fff; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Info cards ── */
+  .card {
+    width: 100%;
+    background: #1a1a2e;
+    border-radius: 16px;
+    padding: 20px;
+  }
+  .card h2 { font-size: 15px; color: #9ca3af; margin-bottom: 6px; }
+  .card .big { font-size: 42px; font-weight: 800; line-height: 1; }
+  .card .unit { font-size: 14px; color: #6b7280; margin-top: 4px; }
+
+  .vital-row { display: flex; gap: 12px; width: 100%; }
+  .vital-row .card { flex: 1; }
+
+  .quality-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .q-GOOD   { background: #14532d; color: #22c55e; }
+  .q-FAIR   { background: #78350f; color: #f59e0b; }
+  .q-POOR   { background: #450a0a; color: #ef4444; }
+  .q-INVALID{ background: #1f2937; color: #9ca3af; }
+
+  .disclaimer {
+    font-size: 12px;
+    color: #4b5563;
+    text-align: center;
+    line-height: 1.5;
+    padding: 0 8px;
+  }
+
+  /* ── Titles / text ── */
+  h1 { font-size: 22px; font-weight: 800; }
+  p  { font-size: 14px; color: #9ca3af; text-align: center; line-height: 1.6; }
+  .emoji { font-size: 48px; }
+  .error-msg { color: #ef4444; font-size: 14px; text-align: center; }
+
+  /* ── Instruction list ── */
+  .instructions {
+    width: 100%;
+    background: #111827;
+    border-radius: 14px;
+    padding: 16px 20px;
+    list-style: none;
+  }
+  .instructions li {
+    font-size: 14px;
+    color: #d1d5db;
+    padding: 6px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .instructions li::before { content: "✓"; color: #22c55e; font-weight: 700; }
+
+  /* ── Progress bar (measuring) ── */
+  #progress-bar-wrap {
+    width: 100%;
+    background: #1f2937;
+    border-radius: 8px;
+    height: 8px;
+    overflow: hidden;
+  }
+  #progress-bar {
+    height: 100%;
+    background: #22c55e;
+    border-radius: 8px;
+    transition: width 0.5s linear;
+  }
+
+  /* ── Heart rate animation ── */
+  @keyframes pulse {
+    0%,100% { transform: scale(1); }
+    50%      { transform: scale(1.15); }
+  }
+  .pulse-anim { animation: pulse 1s ease-in-out infinite; display: inline-block; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ══ SCREEN 1: Welcome ══ -->
+  <div id="screen-welcome" class="screen active">
+    <div class="emoji">📷</div>
+    <h1>Pulse Check</h1>
+    <p>Shifa AI will estimate your heart rate and breathing rate using your front camera.<br><br>
+       This is <strong>experimental</strong> and not a medical device.</p>
+
+    <ul class="instructions">
+      <li>Position your face in the oval guide</li>
+      <li>Keep your phone still</li>
+      <li>Good, even lighting (no harsh shadows)</li>
+      <li>Stay still for 15 seconds</li>
+      <li>Measurement takes ~15 seconds</li>
+    </ul>
+
+    <p class="disclaimer">🔒 Your camera is used only during measurement.<br>
+       Raw video is <strong>never</strong> sent to any server.</p>
+
+    <button class="btn btn-primary" id="btn-start-camera">Start Camera</button>
+    <button class="btn btn-secondary" id="btn-cancel-welcome">Cancel — Use Text Instead</button>
+  </div>
+
+  <!-- ══ SCREEN 2: Camera + Quality Check ══ -->
+  <div id="screen-camera" class="screen">
+    <div id="camera-wrap">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="canvas"></canvas>
+      <canvas id="overlay-canvas"></canvas>
+      <div id="face-guide"></div>
+      <div id="status-badge">Detecting face…</div>
+      <div id="countdown"></div>
+    </div>
+
+    <div id="progress-bar-wrap" style="display:none;">
+      <div id="progress-bar" style="width:0%"></div>
+    </div>
+
+    <p id="measure-label" style="display:none; font-size:14px; color:#22c55e;">
+      📊 Measuring… please stay still
+    </p>
+
+    <button class="btn btn-secondary" id="btn-cancel-camera" style="margin-top:8px;">Cancel</button>
+  </div>
+
+  <!-- ══ SCREEN 3: Processing ══ -->
+  <div id="screen-processing" class="screen">
+    <div class="emoji">⏳</div>
+    <h1>Analysing…</h1>
+    <p>Processing your signal on the server.<br>This takes a few seconds.</p>
+  </div>
+
+  <!-- ══ SCREEN 4: Results ══ -->
+  <div id="screen-result" class="screen">
+    <h1>📊 Vital Check</h1>
+
+    <div class="vital-row">
+      <div class="card">
+        <h2>❤️ Heart Rate</h2>
+        <div class="big pulse-anim" id="hr-value">--</div>
+        <div class="unit">BPM</div>
+      </div>
+      <div class="card">
+        <h2>🫁 Breathing</h2>
+        <div class="big" id="rr-value">--</div>
+        <div class="unit">breaths/min</div>
+      </div>
+    </div>
+
+    <div class="card" style="display:flex; align-items:center; justify-content:space-between;">
+      <div>
+        <h2>📶 Signal Quality</h2>
+        <span class="quality-badge" id="quality-badge">--</span>
+      </div>
+      <div style="text-align:right;">
+        <h2>Duration</h2>
+        <span id="duration-val" style="font-size:18px; font-weight:700;">--s</span>
+      </div>
+    </div>
+
+    <p class="disclaimer" id="result-disclaimer"></p>
+    <button class="btn btn-primary" id="btn-done">✓ Done — Send to Shifa AI</button>
+    <button class="btn btn-secondary" id="btn-retry">Try Again</button>
+  </div>
+
+  <!-- ══ SCREEN 5: Error ══ -->
+  <div id="screen-error" class="screen">
+    <div class="emoji">⚠️</div>
+    <h1>Measurement Failed</h1>
+    <p class="error-msg" id="error-msg">Unable to obtain a reliable measurement.</p>
+    <ul class="instructions" id="error-tips">
+      <li>Use better lighting</li>
+      <li>Keep your face still</li>
+      <li>Keep face in the oval frame</li>
+    </ul>
+    <button class="btn btn-primary" id="btn-retry-error">Try Again</button>
+    <button class="btn btn-secondary" id="btn-cancel-error">Continue with Text</button>
+  </div>
+
+</div>
+
+<!-- MediaPipe via CDN — no local install -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════
+const API_BASE       = window.location.origin;
+const SESSION_ID     = new URLSearchParams(window.location.search).get('s') || '';
+const MEASURE_SECS   = 15;
+const TARGET_FPS     = 30;
+const COUNTDOWN_SECS = 3;
+
+// Landmark indices for ROI (MediaPipe Face Mesh)
+const FOREHEAD_IDX   = [10, 338, 297, 332, 284, 251, 389, 356, 109, 67, 103, 54, 21, 162];
+const LEFT_CHEEK_IDX = [234, 93, 132, 58, 172, 136, 150, 149, 176, 148];
+const RIGHT_CHEEK_IDX= [454, 323, 361, 288, 397, 365, 379, 378, 400, 377];
+const NOSE_TIP_IDX   = 4;
+
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+let stream        = null;
+let faceMesh      = null;
+let mpCamera      = null;
+let collecting    = false;
+let countingDown  = false;
+let cdTimer       = null;
+let measureTimer  = null;
+let progressTimer = null;
+let frames        = [];       // {r,g,b,nose_y,motion}
+let prevLandmarks = null;
+let faceOk        = false;
+let measureStart  = 0;
+let actualFps     = TARGET_FPS;
+let fpsSamples    = [];
+let lastFrameTs   = 0;
+
+// ═══════════════════════════════════════════════════════
+// SCREENS
+// ═══════════════════════════════════════════════════════
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+}
+
+// ═══════════════════════════════════════════════════════
+// MEDIAPIPE SETUP
+// ═══════════════════════════════════════════════════════
+function initMediaPipe() {
+  faceMesh = new FaceMesh({
+    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${f}`
+  });
+  faceMesh.setOptions({
+    maxNumFaces:           2,
+    refineLandmarks:       true,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence:  0.5,
+  });
+  faceMesh.onResults(onFaceResults);
+}
+
+// ═══════════════════════════════════════════════════════
+// CAMERA
+// ═══════════════════════════════════════════════════════
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false,
+    });
+    const video = document.getElementById('video');
+    video.srcObject = stream;
+    await video.play();
+
+    initMediaPipe();
+
+    mpCamera = new Camera(video, {
+      onFrame: async () => { await faceMesh.send({ image: video }); },
+      width: 640, height: 480,
+    });
+    mpCamera.start();
+
+    show('camera');
+  } catch (err) {
+    showError(
+      err.name === 'NotAllowedError'
+        ? 'Camera access was denied. You can continue using text or voice triage.'
+        : 'Camera unavailable: ' + err.message,
+      ['Allow camera permission in your browser settings', 'Try a different browser']
+    );
+  }
+}
+
+function stopCamera() {
+  if (mpCamera) { try { mpCamera.stop(); } catch(e){} mpCamera = null; }
+  if (stream)   { stream.getTracks().forEach(t => t.stop()); stream = null; }
+}
+
+// ═══════════════════════════════════════════════════════
+// FACE MESH RESULTS
+// ═══════════════════════════════════════════════════════
+function onFaceResults(results) {
+  const badge  = document.getElementById('status-badge');
+  const guide  = document.getElementById('face-guide');
+  const canvas = document.getElementById('canvas');
+  const video  = document.getElementById('video');
+  canvas.width  = video.videoWidth  || 640;
+  canvas.height = video.videoHeight || 480;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  const lms = results.multiFaceLandmarks;
+
+  if (!lms || lms.length === 0) {
+    guide.className = 'bad';
+    badge.textContent = '⚠ Face not detected';
+    faceOk = false;
+    return;
+  }
+  if (lms.length > 1) {
+    guide.className = 'bad';
+    badge.textContent = '⚠ Multiple faces — stay solo';
+    faceOk = false;
+    return;
+  }
+
+  const lm = lms[0];
+  guide.className = 'good';
+  faceOk = true;
+
+  // FPS tracking
+  const now = performance.now();
+  if (lastFrameTs > 0) {
+    fpsSamples.push(1000 / (now - lastFrameTs));
+    if (fpsSamples.length > 60) fpsSamples.shift();
+    actualFps = fpsSamples.reduce((a,b)=>a+b,0) / fpsSamples.length;
+  }
+  lastFrameTs = now;
+
+  // Motion score: mean landmark displacement from previous frame
+  let motionScore = 0;
+  if (prevLandmarks) {
+    let disp = 0;
+    for (let i = 0; i < lm.length; i++) {
+      const dx = lm[i].x - prevLandmarks[i].x;
+      const dy = lm[i].y - prevLandmarks[i].y;
+      disp += Math.sqrt(dx*dx + dy*dy);
+    }
+    motionScore = disp / lm.length;
+  }
+  prevLandmarks = lm;
+
+  if (!collecting) {
+    if (!countingDown && faceOk) {
+      badge.textContent = '✓ Face detected — hold still';
+      startCountdown();
+    }
+    return;
+  }
+
+  // ── Extract ROI RGB ──────────────────────────────────
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const rgb = extractROI(imgData, lm, canvas.width, canvas.height);
+
+  const nose_y = lm[NOSE_TIP_IDX] ? lm[NOSE_TIP_IDX].y : null;
+
+  frames.push({ r: rgb[0], g: rgb[1], b: rgb[2], nose_y, motion: motionScore });
+
+  // Status
+  const elapsed = (Date.now() - measureStart) / 1000;
+  const pct     = Math.min(elapsed / MEASURE_SECS * 100, 100);
+  document.getElementById('progress-bar').style.width = pct + '%';
+  badge.textContent = `Measuring… ${Math.ceil(MEASURE_SECS - elapsed)}s`;
+
+  if (elapsed >= MEASURE_SECS && frames.length >= TARGET_FPS * MEASURE_SECS * 0.6) {
+    finishMeasurement();
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// ROI EXTRACTION (browser-side, pure JS)
+// ═══════════════════════════════════════════════════════
+function extractROI(imgData, lm, w, h) {
+  let rSum=0, gSum=0, bSum=0, count=0;
+  const indices = [...FOREHEAD_IDX, ...LEFT_CHEEK_IDX, ...RIGHT_CHEEK_IDX];
+  for (const idx of indices) {
+    const pt = lm[idx];
+    if (!pt) continue;
+    const px = Math.round(pt.x * w);
+    const py = Math.round(pt.y * h);
+    if (px < 0 || px >= w || py < 0 || py >= h) continue;
+    const i = (py * w + px) * 4;
+    rSum += imgData.data[i];
+    gSum += imgData.data[i+1];
+    bSum += imgData.data[i+2];
+    count++;
+  }
+  if (count === 0) return [128, 128, 128];
+  return [rSum/count, gSum/count, bSum/count];
+}
+
+// ═══════════════════════════════════════════════════════
+// COUNTDOWN → START MEASURING
+// ═══════════════════════════════════════════════════════
+function startCountdown() {
+  if (countingDown) return;
+  countingDown = true;
+  let cd = COUNTDOWN_SECS;
+  const cdEl = document.getElementById('countdown');
+  cdEl.style.display = 'block';
+  cdEl.textContent = cd;
+
+  cdTimer = setInterval(() => {
+    cd--;
+    if (cd <= 0) {
+      clearInterval(cdTimer);
+      cdEl.style.display = 'none';
+      if (faceOk) beginMeasurement();
+      else {
+        countingDown = false; // face lost — retry
+        document.getElementById('status-badge').textContent = 'Keep face in frame…';
+      }
+    } else {
+      cdEl.textContent = cd;
+    }
+  }, 1000);
+}
+
+function beginMeasurement() {
+  frames        = [];
+  collecting    = true;
+  measureStart  = Date.now();
+  document.getElementById('progress-bar-wrap').style.display = 'block';
+  document.getElementById('measure-label').style.display     = 'block';
+  document.getElementById('btn-cancel-camera').textContent   = 'Cancel';
+}
+
+function finishMeasurement() {
+  collecting = false;
+  stopCamera();
+  show('processing');
+  submitToServer();
+}
+
+// ═══════════════════════════════════════════════════════
+// SUBMIT TO FASTAPI
+// ═══════════════════════════════════════════════════════
+async function submitToServer() {
+  if (!SESSION_ID) {
+    showError('No session ID found. Please re-open the link from WhatsApp.');
+    return;
+  }
+  try {
+    const res = await fetch(`${API_BASE}/api/vitals/estimate`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        session_id: SESSION_ID,
+        fps:        Math.round(actualFps * 10) / 10,
+        frames:     frames,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(()=>({}));
+      throw new Error(err.detail || `Server error ${res.status}`);
+    }
+    const data = await res.json();
+    showResult(data);
+  } catch (err) {
+    showError('Could not connect to server: ' + err.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// SHOW RESULT
+// ═══════════════════════════════════════════════════════
+function showResult(data) {
+  if (data.status === 'invalid' || data.signal_quality === 'INVALID' || data.signal_quality === 'POOR') {
+    showError(
+      data.message || 'Measurement unreliable.',
+      ['Use better lighting', 'Keep face still in the oval', 'Try again']
+    );
+    return;
+  }
+
+  const hr = data.heart_rate;
+  const rr = data.respiration_rate;
+
+  document.getElementById('hr-value').textContent =
+    hr && hr.value ? hr.value : '--';
+  document.getElementById('rr-value').textContent =
+    rr && rr.value ? rr.value : '--';
+  document.getElementById('duration-val').textContent =
+    data.measurement_duration + 's';
+
+  const qBadge = document.getElementById('quality-badge');
+  qBadge.textContent  = data.signal_quality;
+  qBadge.className    = 'quality-badge q-' + data.signal_quality;
+
+  document.getElementById('result-disclaimer').textContent = data.disclaimer;
+
+  show('result');
+}
+
+// ═══════════════════════════════════════════════════════
+// SHOW ERROR
+// ═══════════════════════════════════════════════════════
+function showError(msg, tips) {
+  document.getElementById('error-msg').textContent = msg || 'An error occurred.';
+  const tipsEl = document.getElementById('error-tips');
+  if (tips && tips.length) {
+    tipsEl.innerHTML = tips.map(t => `<li>${t}</li>`).join('');
+  }
+  show('error');
+}
+
+// ═══════════════════════════════════════════════════════
+// CANCEL / RETRY
+// ═══════════════════════════════════════════════════════
+function cancelAll() {
+  collecting    = false;
+  countingDown  = false;
+  if (cdTimer)        { clearInterval(cdTimer);        cdTimer = null; }
+  if (measureTimer)   { clearInterval(measureTimer);   measureTimer = null; }
+  stopCamera();
+  // Redirect back — close tab or show message
+  document.body.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#9ca3af;font-size:16px;">You can close this page and continue on WhatsApp.</div>';
+}
+
+function retry() {
+  collecting    = false;
+  countingDown  = false;
+  frames        = [];
+  prevLandmarks = null;
+  if (cdTimer)  { clearInterval(cdTimer); cdTimer = null; }
+  stopCamera();
+  show('welcome');
+}
+
+// ═══════════════════════════════════════════════════════
+// BUTTON BINDINGS
+// ═══════════════════════════════════════════════════════
+document.getElementById('btn-start-camera').onclick   = startCamera;
+document.getElementById('btn-cancel-welcome').onclick = cancelAll;
+document.getElementById('btn-cancel-camera').onclick  = cancelAll;
+document.getElementById('btn-done').onclick = () => {
+  // Close tab — result already saved on server
+  try { window.close(); } catch(e) {}
+  document.body.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#22c55e;font-size:16px;text-align:center;padding:24px;">✓ Result sent to Shifa AI.<br>You can close this page.</div>';
+};
+document.getElementById('btn-retry').onclick       = retry;
+document.getElementById('btn-retry-error').onclick = retry;
+document.getElementById('btn-cancel-error').onclick= cancelAll;
+</script>
+</body>
+</html>
