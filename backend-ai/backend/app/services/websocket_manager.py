@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +58,12 @@ class ConnectionManager:
 
 
 def verify_dashboard_token(token: str) -> bool:
-    """Verify the dashboard access token."""
-    expected = os.getenv("DASHBOARD_SECRET_TOKEN", "shifa_dashboard_2024")
-    return token == expected
+    """Verify the dashboard access token using constant-time comparison."""
+    import hmac
+    expected = settings.DASHBOARD_SECRET_TOKEN
+    if not expected or not token:
+        return False
+    return hmac.compare_digest(token, expected)
 
 
 # Singleton manager instance

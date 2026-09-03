@@ -29,6 +29,10 @@ from app.handlers.emergency_handler import (
     is_cancellation_request,
     handle_emergency_cancellation,
 )
+from app.handlers.transport_handler import (
+    is_transport_selection,
+    handle_transport_selection,
+)
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -47,6 +51,11 @@ def handle_text_message(from_number: str, body: str) -> None:
     # ── 0a. Emergency cancellation request ──────────
     if is_cancellation_request(body):
         handle_emergency_cancellation(from_number)
+        return
+
+    # ── 0b. Transport selection (1/2/3) ──────────────
+    if is_transport_selection(body):
+        handle_transport_selection(from_number, body)
         return
 
     # ── 0. Pulse check trigger ───────────────────────────

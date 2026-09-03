@@ -1,12 +1,10 @@
 import logging
-import os
 from pathlib import Path
 
 from openai import OpenAI, OpenAIError
 import httpx
-from dotenv import load_dotenv
 
-load_dotenv()
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -33,20 +31,20 @@ _model_name = None
 def _get_client():
     global _client, _model_name
     if _client is None:
-        provider = os.getenv("WHISPER_PROVIDER", "openai").lower().strip()
+        provider = settings.WHISPER_PROVIDER
         if provider == "groq":
-            api_key = os.getenv("GROQ_API_KEY")
+            api_key = settings.GROQ_API_KEY
             base_url = "https://api.groq.com/openai/v1"
-            default_model = "whisper-large-v3"
+            default_model = settings.GROQ_WHISPER_MODEL
         else:
-            api_key = os.getenv("OPENAI_API_KEY")
+            api_key = settings.OPENAI_API_KEY
             base_url = None
-            default_model = "whisper-1"
+            default_model = settings.OPENAI_WHISPER_MODEL
 
         if not api_key:
             raise WhisperServiceError("Speech-to-text API key is not configured.")
 
-        timeout_seconds = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
+        timeout_seconds = float(settings.REQUEST_TIMEOUT_SECONDS)
         try:
             if base_url:
                 _client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout_seconds)
@@ -55,7 +53,7 @@ def _get_client():
         except Exception as exc:
             logger.error("Failed to initialize speech-to-text client: %s", exc)
             raise WhisperServiceError("Speech-to-text client could not be initialized.") from exc
-        _model_name = os.getenv("GROQ_WHISPER_MODEL" if provider == "groq" else "OPENAI_WHISPER_MODEL", default_model)
+        _model_name = default_model
     return _client
 
 

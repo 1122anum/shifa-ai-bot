@@ -1,11 +1,9 @@
 import logging
-import os
 
 import google.genai as genai
 from google.genai import types
-from dotenv import load_dotenv
 
-load_dotenv()
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -79,13 +77,14 @@ _model_name = None
 def _get_client():
     global _client, _model_name
     if _client is None:
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = settings.GEMINI_API_KEY
         if not api_key:
             raise GeminiServiceError("Gemini API key is not configured.")
 
         # Remove any conflicting GOOGLE_API_KEY from environment
+        import os
         os.environ.pop("GOOGLE_API_KEY", None)
-        timeout_ms = int(float(os.getenv("REQUEST_TIMEOUT_SECONDS", "60")) * 1000)
+        timeout_ms = int(settings.REQUEST_TIMEOUT_SECONDS * 1000)
         try:
             _client = genai.Client(
                 api_key=api_key,
@@ -97,7 +96,7 @@ def _get_client():
         except Exception as exc:
             logger.error("Failed to initialize Gemini client: %s", exc)
             raise GeminiServiceError("Gemini client could not be initialized.") from exc
-        _model_name = os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
+        _model_name = settings.GEMINI_MODEL
     return _client
 
 

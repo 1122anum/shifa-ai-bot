@@ -1,43 +1,82 @@
-# Environment files - NEVER commit
+# ============================================================
+# Environment files - NEVER commit secrets
+# ============================================================
 .env
-*.env
 .env.local
+.env.production
+!.env.example
 
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 *.pyo
+*.pyd
 .Python
 venv/
 env/
 .venv/
 
-# Audio temp
+# Audio / media temp
 audio_temp/
 audio_temp_test/
 *.ogg
 *.mp3
 *.wav
 *.m4a
+*.opus
+*.amr
 
 # IDE
 .vscode/
 .idea/
 *.swp
+*.swo
+*~
 .DS_Store
+Thumbs.db
 
 # Logs
 *.log
+logs/
+debug.log
 
 # ngrok
 ngrok.exe
 ngrok.yml
+ngrok
 
 # Test cache
 .pytest_cache/
 .coverage
 htmlcov/
+coverage.xml
+*.cover
+.tox/
 
 # SQLite database
 shifa_ai.db
 *.db
+
+# Screenshots / test images
+page_*.png
+*.screenshot.png
+
+# Keys / certificates
+*.pem
+*.key
+*.crt
+service-account*.json
+firebase-adminsdk*.json
+secrets/
+credentials/
+
+# Build / dist
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# OS
+.DS_Store
+Thumbs.db

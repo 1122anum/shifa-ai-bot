@@ -244,6 +244,98 @@ def cancellation_confirmation(lang: str = "en") -> str:
         )
 
 
+# ── Transport options ───────────────────────────────────────────────────
+
+def transport_options_message(lang: str = "en") -> str:
+    """Message offering transport choices: Ambulance, InDrive, Uber."""
+    if lang == "ur":
+        return (
+            "🚗 *ایمرجنسی ٹرانسپورٹ منتخب کریں*\n\n"
+            "براہِ کرم نیچے دیے گئے آپشنز میں سے اپنا ذریعہ سفر منتخب کریں:\n\n"
+            "🚑 *1. ایمبولینس* — قریب ترین ایمرجنسی ایمبولینس بُلائی جائے\n"
+            "🚕 *2. ان ڈرائیو (InDrive)* — فوری رائیڈ بک کریں\n"
+            "🚙 *3. اوبر (Uber)* — فوری رائیڈ بک کریں\n\n"
+            "براہِ کرم *1*، *2*، یا *3* ٹائپ کریں۔"
+        )
+    elif lang == "sd":
+        return (
+            "🚗 *ايمرجنسي ٽرانسپورٽ چونڊيو*\n\n"
+            "مهرباني ڪري هيٺ ڏنل آپشنز مان پنهنجو سفر جو ذريعو چونڊيو:\n\n"
+            "🚑 *1. ايمبولينس* — ويجهي ايمرجنسي ايمبولينس گهرايو\n"
+            "🚕 *2. ان ڊرائيو (InDrive)* — فوري رائيڊ بڪ ڪريو\n"
+            "🚙 *3. اوبر (Uber)* — فوري رائيڊ بڪ ڪريو\n\n"
+            "مهرباني ڪري *1*، *2*، يا *3* ٽائپ ڪريو."
+        )
+    elif lang == "roman_urdu":
+        return (
+            "🚗 *Emergency Transport Select Karein*\n\n"
+            "Barah-e-karam neeche diye gaye options mein se apna zariya-e-safar select karein:\n\n"
+            "🚑 *1. Ambulance* — Qareebi emergency ambulance bulayein\n"
+            "🚕 *2. InDrive* — Fauri ride book karein\n"
+            "🚙 *3. Uber* — Fauri ride book karein\n\n"
+            "Barah-e-karam *1*, *2*, ya *3* type karein."
+        )
+    elif lang == "roman_sindhi":
+        return (
+            "🚗 *Emergency Transport Select Kariyo*\n\n"
+            "Mehrban kari heath diye optionan mein panhanje safar jo zareeo select kariyo:\n\n"
+            "🚑 *1. Ambulance* — Veenhi emergency ambulance ghareyo\n"
+            "🚕 *2. InDrive* — Fauri ride book kariyo\n"
+            "🚙 *3. Uber* — Fauri ride book kariyo\n\n"
+            "Mehrban kari *1*, *2*, ya *3* type kariyo."
+        )
+    else:  # English
+        return (
+            "🚗 *Choose Emergency Transport*\n\n"
+            "Please select your mode of transport from the options below:\n\n"
+            "🚑 *1. Ambulance* — Call the nearest emergency ambulance\n"
+            "🚕 *2. InDrive* — Book an immediate ride\n"
+            "🚙 *3. Uber* — Book an immediate ride\n\n"
+            "Please type *1*, *2*, or *3*."
+        )
+
+
+def transport_booked_confirmation(lang: str = "en", transport_type: str = "",
+                                   facility: str = "", lat: float = 0,
+                                   lng: float = 0) -> str:
+    """Confirmation message after user selects a transport option."""
+    type_labels = {
+        "ambulance": "🚑 Ambulance",
+        "indrive": "🚕 InDrive",
+        "uber": "🚙 Uber",
+    }
+    label = type_labels.get(transport_type, transport_type)
+
+    if lang == "ur":
+        return (
+            f"✅ *{label} منتخب ہو گیا*\n\n"
+            f"منزل: {facility or 'قریب ترین ایمرجنسی سہولت'}\n\n"
+            "⚠️ *یہ ایک ڈیمو/سمولیٹڈ بکنگ ہے۔*\n"
+            "حقیقی ایمرجنسی میں اپنے مقامی ایمرجنسی نمبر پر کال کریں۔"
+        )
+    elif lang == "sd":
+        return (
+            f"✅ *{label} چونڊيو ويو*\n\n"
+            f"منزل: {facility or 'ويجهي ايمرجنسي سهولت'}\n\n"
+            "⚠️ *هي هڪ ڊيمو/سيموليٽيڊ بکنگ آهي.*\n"
+            "حقيقي ايمرجنسي ۾ پنهنجي مقامي ايمرجنسي نمبر تي ڪال ڪريو."
+        )
+    elif lang in ("roman_urdu", "roman_sindhi"):
+        return (
+            f"✅ *{label} select ho gaya*\n\n"
+            f"Manzil: {facility or 'Qareebi emergency facility'}\n\n"
+            "⚠️ *Yeh ek DEMO/SIMULATED booking hai.*\n"
+            "Haqiqi emergency mein apne maqami emergency number par call karein."
+        )
+    else:
+        return (
+            f"✅ *{label} Selected*\n\n"
+            f"Destination: {facility or 'Nearest Emergency Facility'}\n\n"
+            "⚠️ *This is a DEMO/SIMULATED booking.*\n"
+            "In a real emergency, call your local emergency number immediately."
+        )
+
+
 # ── Location received confirmation ──────────────────────────────────────
 
 def location_received_confirmation(lang: str = "en", distance_km: float = 0,

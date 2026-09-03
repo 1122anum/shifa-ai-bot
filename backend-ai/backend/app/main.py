@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.core.config import settings
 from app.models.schemas import (
     SymptomRequest,
     TriageResponse,
@@ -37,12 +38,14 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS — required so the browser camera page (opened via WhatsApp link)
-# can POST to /api/vitals/estimate on this backend.
-# Session tokens provide authorisation; cookies are not used.
+# CORS — restricted in production; allow_origins=["*"] only for development
+_allowed_origins = (
+    ["*"] if settings.ENVIRONMENT == "development"
+    else [settings.BACKEND_PUBLIC_URL]
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

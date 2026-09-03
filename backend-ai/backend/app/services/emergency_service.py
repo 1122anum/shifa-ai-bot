@@ -18,6 +18,7 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
 
+from app.core.config import settings
 from app.models.emergency import (
     RiskLevel,
     EmergencyCategory,
@@ -33,7 +34,7 @@ _DB_PATH = os.path.normpath(
 )
 
 # Cooldown window to prevent duplicate emergencies
-COOLDOWN_MINUTES = int(os.getenv("EMERGENCY_COOLDOWN_MINUTES", "10"))
+COOLDOWN_MINUTES = settings.EMERGENCY_COOLDOWN_MINUTES
 
 EMERGENCY_SYSTEM_PROMPT = """You are the emergency triage classification component of Shifa AI.
 
@@ -165,15 +166,13 @@ def _call_gemini_emergency(prompt: str) -> dict:
     """Call Gemini with the emergency analysis prompt."""
     import google.genai as genai
     from google.genai import types
-    from dotenv import load_dotenv
-    load_dotenv()
 
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = settings.GEMINI_API_KEY
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY not configured")
 
-    model_name = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
-    timeout_ms = int(float(os.getenv("REQUEST_TIMEOUT_SECONDS", "30")) * 1000)
+    model_name = settings.GEMINI_MODEL
+    timeout_ms = int(settings.REQUEST_TIMEOUT_SECONDS * 1000)
 
     os.environ.pop("GOOGLE_API_KEY", None)
     client = genai.Client(

@@ -25,6 +25,7 @@ from app.handlers.emergency_messages import (
     dispatch_notification,
     cancellation_confirmation,
     location_received_confirmation,
+    transport_options_message,
 )
 from app.utils.logger import get_logger
 
@@ -166,6 +167,10 @@ def handle_emergency_workflow(
     # Step 3: Send emergency guidance
     guidance_msg = emergency_guidance(lang)
     send_whatsapp_message(from_number, guidance_msg)
+
+    # Step 4: Send transport options (Ambulance / InDrive / Uber)
+    transport_msg = transport_options_message(lang)
+    send_whatsapp_message(from_number, transport_msg)
 
 
 def handle_dispatch_notification(

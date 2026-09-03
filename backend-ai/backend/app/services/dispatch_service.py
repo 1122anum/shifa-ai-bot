@@ -20,6 +20,7 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
 
+from app.core.config import settings
 from app.services.geolocation_service import estimate_eta_minutes, haversine_distance
 from app.services.facility_service import find_nearest_emergency_facility
 
@@ -33,7 +34,7 @@ _DB_PATH = os.path.normpath(
 
 
 def _dispatch_mode() -> str:
-    return os.getenv("EMERGENCY_DISPATCH_MODE", "MOCK").strip().upper()
+    return settings.EMERGENCY_DISPATCH_MODE
 
 
 def create_dispatch_request(
