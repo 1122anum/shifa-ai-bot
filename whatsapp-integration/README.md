@@ -1,6 +1,6 @@
 # Shifa AI — WhatsApp Integration
 
-> **Part 2 of 2** — WhatsApp / Twilio integration layer for the AI Medical Triage Bot.  
+> **Part 2 of 2** — WhatsApp / Twilio integration layer for the AI Medical Triage Bot.
 > Part 1 (FastAPI + Gemini + Whisper backend) is maintained by the backend team on the `backend-ai` branch.
 
 ---

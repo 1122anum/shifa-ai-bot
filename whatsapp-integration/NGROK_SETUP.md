@@ -6,7 +6,7 @@ This guide connects your local WhatsApp integration server to Twilio over the in
 
 ## Why ngrok?
 
-Twilio needs a **public HTTPS URL** to deliver WhatsApp messages to your webhook.  
+Twilio needs a **public HTTPS URL** to deliver WhatsApp messages to your webhook.
 ngrok creates a secure tunnel from the internet to your local machine.
 
 ---
@@ -156,7 +156,7 @@ You should see:
 
 ## Keeping ngrok Running
 
-The free ngrok URL **changes every time you restart ngrok**.  
+The free ngrok URL **changes every time you restart ngrok**.
 Each restart requires:
 1. Copying the new URL
 2. Updating `.env`
