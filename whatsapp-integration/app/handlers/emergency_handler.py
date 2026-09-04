@@ -168,9 +168,8 @@ def handle_emergency_workflow(
     guidance_msg = emergency_guidance(lang)
     send_whatsapp_message(from_number, guidance_msg)
 
-    # Step 4: Send transport options (Ambulance / InDrive / Uber)
-    transport_msg = transport_options_message(lang)
-    send_whatsapp_message(from_number, transport_msg)
+    # Transport is now AUTO-BOOKED after user shares location
+    # (handled by location_handler._auto_book_transport)
 
 
 def handle_dispatch_notification(

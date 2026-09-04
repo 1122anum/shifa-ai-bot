@@ -80,3 +80,6 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+.vercel
+.vercel-tmp/
+deployment_check.png

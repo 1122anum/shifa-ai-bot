@@ -380,3 +380,165 @@ def location_received_confirmation(lang: str = "en", distance_km: float = 0,
             "Emergency team has been alerted.\n"
             "⚠️ This is experimental guidance — NOT a real emergency service."
         )
+
+
+# ── Auto-Book All Transport ─────────────────────────────────────────────
+
+def hospital_request_message(lang: str = "en") -> str:
+    """Ask the user which hospital they want to go to."""
+    if lang == "ur":
+        return (
+            "🏥 *کون سا ہسپتال?*\n\n"
+            "براہِ کرم اس ہسپتال کا نام بتائیں جہاں آپ جانا چاہتے ہیں:\n\n"
+            "_مثال: جناح ہسپتال، ای Aga خان ہسپتال، پمز ہسپتال_\n\n"
+            "آپ ہسپتال کا نام ٹائپ کریں — ہم آپ کی سواری خود بخود بُک کر دیں گے۔"
+        )
+    elif lang == "sd":
+        return (
+            "🏥 *ڪهڙو اسپتال?*\n\n"
+            "مهرباني ڪري ان اسپتال جو نالو ٻڌايو جتي توهان وڃڻ چاهيو ٿا:\n\n"
+            "_مثال: جناح اسپتال، آغا خان اسپتال، پمز اسپتال_\n\n"
+            "اسپتال جو نالو ٽائپ ڪريو — اسان توهان جي سواري خودڪار بڪ ڪري ڇڏينداسين."
+        )
+    elif lang in ("roman_urdu", "roman_sindhi"):
+        return (
+            "🏥 *Kaunsa Hospital?*\n\n"
+            "Barah-e-karam us hospital ka naam batayein jahan aap jana chahte hain:\n\n"
+            "_Misal: Jinnah Hospital, Aga Khan Hospital, PIMS Hospital_\n\n"
+            "Hospital ka naam type karein — hum aap ki sawari khud-ba-khud book kar denge."
+        )
+    else:
+        return (
+            "🏥 *Which Hospital?*\n\n"
+            "Please tell us the name of the hospital you want to go to:\n\n"
+            "_Example: Jinnah Hospital, Aga Khan Hospital, PIMS Hospital_\n\n"
+            "Type the hospital name — we'll auto-book your ride."
+        )
+
+
+def auto_book_cascade_message(
+    lang: str = "en",
+    booked_type: str = "",
+    dispatch_id: str = "",
+    eta_minutes: float = 0,
+    facility: str = "",
+    lat: float = 0,
+    lng: float = 0,
+    ambulance_available: bool = True,
+) -> str:
+    """Message after cascading transport booking."""
+    import urllib.parse
+
+    eta_text = f"{eta_minutes:.0f} min" if eta_minutes else "N/A"
+    dest_label = facility or "Emergency Hospital"
+
+    if booked_type == "ambulance":
+        if lang == "ur":
+            return (
+                "🚑 *ایمبرولینس بُک ہو گئی!*\n\n"
+                f"🏥 منزل: {dest_label}\n"
+                f"🕐 ETA: {eta_text}\n"
+                f"📋 Dispatch ID: {dispatch_id}\n\n"
+                "⚠️ *یہ ایک سمولیٹڈ ڈسپیچ ہے — حقیقی ایمبولینس نہیں۔*\n"
+                "حقیقی ایمرجنسی میں 1122 پر کال کریں۔"
+            )
+        elif lang == "sd":
+            return (
+                "🚑 *ايمبولينس بڪ ٿي وئي!*\n\n"
+                f"🏥 منزل: {dest_label}\n"
+                f"🕐 ETA: {eta_text}\n"
+                f"📋 Dispatch ID: {dispatch_id}\n\n"
+                "⚠️ *هي هڪ سيموليٽيڊ ڊسپيچ آهي — حقيقي ايمبولينس نه.*\n"
+                "حقيقي ايمرجنسي ۾ 1122 تي ڪال ڪريو."
+            )
+        elif lang in ("roman_urdu", "roman_sindhi"):
+            return (
+                "🚑 *Ambulance book ho gayi!*\n\n"
+                f"🏥 Manzil: {dest_label}\n"
+                f"🕐 ETA: {eta_text}\n"
+                f"📋 Dispatch ID: {dispatch_id}\n\n"
+                "⚠️ *Yeh ek simulated dispatch hai — haqiqi ambulance nahi.*\n"
+                "Haqiqi emergency mein 1122 par call karein."
+            )
+        else:
+            return (
+                "🚑 *Ambulance Booked!*\n\n"
+                f"🏥 Destination: {dest_label}\n"
+                f"🕐 ETA: {eta_text}\n"
+                f"📋 Dispatch ID: {dispatch_id}\n\n"
+                "⚠️ *This is a SIMULATED dispatch — NOT a real ambulance.*\n"
+                "In a real emergency, call 1122 immediately."
+            )
+
+    elif booked_type == "indrive":
+        if lat and lng:
+            params = urllib.parse.urlencode({
+                "dropoff_lat": lat, "dropoff_lng": lng, "dropoff_name": dest_label,
+            })
+            link = f"https://indrive.com/app/?{params}"
+        else:
+            link = "https://indrive.com/app/"
+
+        if lang == "ur":
+            return (
+                "🚕 *InDrive بُک ہو گئی!*\n\n"
+                f"🏥 منزل: {dest_label}\n\n"
+                f"🔗 *رائیڈ بک کریں:* {link}\n\n"
+                "⚠️ ایمبولینس دستیاب نہیں تھی — InDrive متبادل کے طور پر بُک کی گئی۔\n"
+                "حقیقی ایمرجنسی میں 1122 پر کال کریں۔"
+            )
+        elif lang in ("roman_urdu", "roman_sindhi"):
+            return (
+                "🚕 *InDrive book ho gayi!*\n\n"
+                f"🏥 Manzil: {dest_label}\n\n"
+                f"🔗 *Ride book karein:* {link}\n\n"
+                "⚠️ Ambulance available nahi thi — InDrive alternative ke taur par book ki gayi.\n"
+                "Haqiqi emergency mein 1122 par call karein."
+            )
+        else:
+            return (
+                "🚕 *InDrive Booked!*\n\n"
+                f"🏥 Destination: {dest_label}\n\n"
+                f"🔗 *Book your ride:* {link}\n\n"
+                "⚠️ Ambulance was not available — InDrive booked as alternative.\n"
+                "In a real emergency, call your local emergency number."
+            )
+
+    elif booked_type == "uber":
+        if lat and lng:
+            params = urllib.parse.urlencode({
+                "action": "setPickup",
+                "dropoff[latitude]": lat,
+                "dropoff[longitude]": lng,
+                "dropoff[nickname]": dest_label,
+            })
+            link = f"https://m.uber.com/ul/?{params}"
+        else:
+            link = "https://m.uber.com/ul/"
+
+        if lang == "ur":
+            return (
+                "🚙 *Uber بُک ہو گئی!*\n\n"
+                f"🏥 منزل: {dest_label}\n\n"
+                f"🔗 *رائیڈ بک کریں:* {link}\n\n"
+                "⚠️ ایمبولینس اور InDrive دونوں دستیاب نہیں تھے — Uber متبادل کے طور پر بُک کی گئی۔\n"
+                "حقیقی ایمرجنسی میں 1122 پر کال کریں۔"
+            )
+        elif lang in ("roman_urdu", "roman_sindhi"):
+            return (
+                "🚙 *Uber book ho gayi!*\n\n"
+                f"🏥 Manzil: {dest_label}\n\n"
+                f"🔗 *Ride book karein:* {link}\n\n"
+                "⚠️ Ambulance aur InDrive dono available nahi the — Uber alternative ke taur par book ki gayi.\n"
+                "Haqiqi emergency mein 1122 par call karein."
+            )
+        else:
+            return (
+                "🚙 *Uber Booked!*\n\n"
+                f"🏥 Destination: {dest_label}\n\n"
+                f"🔗 *Book your ride:* {link}\n\n"
+                "⚠️ Both Ambulance and InDrive were unavailable — Uber booked as alternative.\n"
+                "In a real emergency, call your local emergency number."
+            )
+
+    return "Transport booking failed. Please call 1122 directly."

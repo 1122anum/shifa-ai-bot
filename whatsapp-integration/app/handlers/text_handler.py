@@ -33,6 +33,10 @@ from app.handlers.transport_handler import (
     is_transport_selection,
     handle_transport_selection,
 )
+from app.handlers.location_handler import (
+    is_waiting_for_hospital,
+    handle_hospital_input,
+)
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -51,6 +55,11 @@ def handle_text_message(from_number: str, body: str) -> None:
     # ── 0a. Emergency cancellation request ──────────
     if is_cancellation_request(body):
         handle_emergency_cancellation(from_number)
+        return
+
+    # ── 0a2. Hospital name input (cascading transport booking) ──
+    if is_waiting_for_hospital(from_number):
+        handle_hospital_input(from_number, body)
         return
 
     # ── 0b. Transport selection (1/2/3) ──────────────

@@ -1,4 +1,5 @@
 import logging
+import time
 
 import google.genai as genai
 from google.genai import types
@@ -7,7 +8,10 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "gemini-3.6-flash"
+DEFAULT_MODEL = "gemini-3.5-flash"
+FALLBACK_MODEL = "gemini-3.6-flash"
+MAX_RETRIES = 3
+RETRY_BACKOFF_SECONDS = [2, 5, 10]
 
 TRIAGE_SYSTEM_PROMPT = """You are Shifa AI, an AI medical triage assistant.
 
@@ -90,7 +94,7 @@ def _get_client():
                 api_key=api_key,
                 http_options=types.HttpOptions(
                     timeout=timeout_ms,
-                    api_version="v1",
+                    api_version="v1beta",
                 ),
             )
         except Exception as exc:
@@ -128,22 +132,54 @@ def _generate_reply(symptoms: str) -> str:
     except GeminiServiceError:
         raise
 
-    try:
-        response = client.models.generate_content(
-            model=_model_name,
-            contents=symptoms,
-            config=types.GenerateContentConfig(
-                system_instruction=TRIAGE_SYSTEM_PROMPT,
-                temperature=0.3,
-                max_output_tokens=1024,
-            ),
-        )
-    except Exception as exc:
-        logger.error("Gemini request failed: %s", exc)
-        raise GeminiServiceError("Gemini request failed or timed out.") from exc
+    # Try primary model with retries, then fallback model
+    models_to_try = [_model_name, FALLBACK_MODEL] if _model_name != FALLBACK_MODEL else [_model_name]
 
-    try:
-        return (response.text or "").strip()
-    except Exception as exc:
-        logger.error("Gemini returned no usable text (possibly safety-blocked): %s", exc)
-        raise GeminiServiceError("Gemini could not generate a safe response.") from exc
+    for model_idx, model in enumerate(models_to_try):
+        for attempt in range(MAX_RETRIES):
+            try:
+                logger.info("Gemini call | model=%s | attempt=%d", model, attempt + 1)
+                chat = client.chats.create(
+                    model=model,
+                    config=types.GenerateContentConfig(
+                        system_instruction=TRIAGE_SYSTEM_PROMPT,
+                        temperature=0.3,
+                        max_output_tokens=1024,
+                    ),
+                )
+                response = chat.send_message(symptoms)
+                try:
+                    text = (response.text or "").strip()
+                except Exception as exc:
+                    logger.error("Gemini returned no usable text (possibly safety-blocked): %s", exc)
+                    raise GeminiServiceError("Gemini could not generate a safe response.") from exc
+
+                if text:
+                    if model != _model_name:
+                        logger.info("Fallback model %s succeeded", model)
+                    return text
+                # Empty response — treat as failure, retry
+                logger.warning("Gemini returned empty text | model=%s | attempt=%d", model, attempt + 1)
+
+            except GeminiServiceError:
+                raise  # Safety-blocked etc — don't retry
+            except Exception as exc:
+                err_str = str(exc)
+                is_retryable = any(code in err_str for code in ["503", "504", "UNAVAILABLE", "DEADLINE", "502", "RESOURCE_EXHAUSTED", "429"])
+                logger.warning("Gemini error | model=%s | attempt=%d | retryable=%s | error=%s",
+                               model, attempt + 1, is_retryable, exc)
+                if not is_retryable:
+                    raise GeminiServiceError("Gemini request failed.") from exc
+
+            # Wait before retry (backoff)
+            if attempt < MAX_RETRIES - 1:
+                wait = RETRY_BACKOFF_SECONDS[attempt]
+                logger.info("Retrying in %ds...", wait)
+                time.sleep(wait)
+
+        # Primary model exhausted all retries — try fallback
+        if model_idx == 0 and len(models_to_try) > 1:
+            logger.warning("Primary model %s failed after %d retries — trying fallback %s",
+                           model, MAX_RETRIES, FALLBACK_MODEL)
+
+    raise GeminiServiceError("Gemini request failed or timed out after all retries.")
