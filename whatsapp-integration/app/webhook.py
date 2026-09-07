@@ -12,6 +12,9 @@ Also serves:
 import hashlib
 import hmac
 import os
+import time
+import threading
+from collections import OrderedDict
 from flask import Flask, request, Response, jsonify
 
 from app.config import config
@@ -26,6 +29,41 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 app = Flask(__name__)
+
+
+# ─────────────────────────────────────────────
+# Message Deduplication (prevents Meta retries)
+# ─────────────────────────────────────────────
+_processed_msg_ids: OrderedDict = OrderedDict()
+_DEDUP_MAX = 5000
+_DEDUP_TTL_SECONDS = 300  # 5 minutes
+
+_msg_ids_lock = threading.Lock()
+
+
+def _is_duplicate(msg_id: str) -> bool:
+    """Return True if this message ID was already processed."""
+    if not msg_id:
+        return False
+
+    now = time.time()
+    with _msg_ids_lock:
+        # Check if already seen
+        if msg_id in _processed_msg_ids:
+            ts = _processed_msg_ids[msg_id]
+            if now - ts < _DEDUP_TTL_SECONDS:
+                logger.info("Duplicate message skipped | id=%s", msg_id)
+                return True
+            # Expired — will be re-added below
+
+        # Record this message ID
+        _processed_msg_ids[msg_id] = now
+
+        # Evict old entries if too many
+        while len(_processed_msg_ids) > _DEDUP_MAX:
+            _processed_msg_ids.popitem(last=False)
+
+    return False
 
 
 # ─────────────────────────────────────────────
@@ -118,36 +156,44 @@ def whatsapp_webhook():
         logger.info("Message received | id=%s | from=%s | type=%s",
                     msg_id, from_number, msg_type)
 
-        # ── TEXT ──────────────────────────────
-        if msg_type == "text":
-            body = message.get("text", {}).get("body", "")
-            handle_text_message(from_number=from_number, body=body)
+        # ── DEDUPLICATION: skip if already processed ──
+        if _is_duplicate(msg_id):
+            return jsonify({"status": "ok"}), 200
 
-        # ── AUDIO / VOICE ─────────────────────
-        elif msg_type == "audio":
-            audio_info = message.get("audio", {})
-            media_id   = audio_info.get("id", "")
-            mime_type  = audio_info.get("mime_type", "audio/ogg")
-            handle_voice_message(
-                from_number=from_number,
-                media_id=media_id,
-                content_type=mime_type,
-            )
+        # ── Process in background thread (return 200 immediately) ──
+        def _process_message():
+            with app.app_context():
+                try:
+                    if msg_type == "text":
+                        body = message.get("text", {}).get("body", "")
+                        handle_text_message(from_number=from_number, body=body)
 
-        # ── LOCATION ─────────────────────────
-        elif msg_type == "location":
-            location_data = message.get("location", {})
-            handle_location_message(from_number=from_number, location_data=location_data)
+                    elif msg_type == "audio":
+                        audio_info = message.get("audio", {})
+                        media_id   = audio_info.get("id", "")
+                        mime_type  = audio_info.get("mime_type", "audio/ogg")
+                        handle_voice_message(
+                            from_number=from_number,
+                            media_id=media_id,
+                            content_type=mime_type,
+                        )
 
-        # ── UNSUPPORTED MEDIA ─────────────────
-        else:
-            logger.info("Unsupported message type | type=%s | from=%s",
-                        msg_type, from_number)
-            send_whatsapp_message(
-                from_number,
-                "I can only process text messages and voice notes.\n"
-                "Please describe your symptoms in text or send a voice message.",
-            )
+                    elif msg_type == "location":
+                        location_data = message.get("location", {})
+                        handle_location_message(from_number=from_number, location_data=location_data)
+
+                    else:
+                        logger.info("Unsupported message type | type=%s | from=%s",
+                                    msg_type, from_number)
+                        send_whatsapp_message(
+                            from_number,
+                            "I can only process text messages and voice notes.\n"
+                            "Please describe your symptoms in text or send a voice message.",
+                        )
+                except Exception:
+                    logger.exception("Error processing message | id=%s | from=%s", msg_id, from_number)
+
+        threading.Thread(target=_process_message, daemon=True).start()
 
     except Exception:
         logger.exception("Unexpected error processing webhook payload")

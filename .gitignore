@@ -57,6 +57,16 @@ coverage.xml
 # SQLite database
 shifa_ai.db
 *.db
+*.db-shm
+*.db-wal
+
+# Log files
+backend.log
+backend_err.log
+flask.log
+flask_err.log
+ngrok.log
+ngrok_err.log
 
 # Screenshots / test images
 page_*.png
